@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+import math
+import numpy as np
+
+import cereal.messaging as messaging
+from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
+from openpilot.common.constants import CV
+from openpilot.common.filter_simple import FirstOrderFilter
+from openpilot.common.realtime import DT_MDL
+from openpilot.selfdrive.modeld.constants import ModelConstants
+from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
+from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
+from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
+from openpilot.common.params import Params
+from openpilot.common.swaglog import cloudlog
+
+A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
+A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
+
+# Pre-AP follow-mode accel cap: imported lazily to avoid circular deps
+_preap_follow_cache = None
+def _get_preap_follow_limit(v_ego):
+  global _preap_follow_cache
+  if _preap_follow_cache is None:
+    try:
+      from opendbc.car.tesla.preap.constants import ACCEL_PREAP_BP, ACCEL_PREAP_FOLLOW
+      _preap_follow_cache = (ACCEL_PREAP_BP, ACCEL_PREAP_FOLLOW)
+    except ImportError:
+      _preap_follow_cache = (None, None)
+  bp, v = _preap_follow_cache
+  if bp is None:
+    return None
+  return float(np.interp(v_ego, bp, v))
+CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
+ALLOW_THROTTLE_THRESHOLD = 0.4
+MIN_ALLOW_THROTTLE_SPEED = 2.5
+
+# Lookup table for turns
+_A_TOTAL_MAX_V = [1.7, 3.2]
+_A_TOTAL_MAX_BP = [20., 40.]
+
+def get_max_accel(v_ego):
+  return np.interp(v_ego, A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS)
+
+def get_coast_accel(pitch):
+  return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
+
+def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
+  """
+  This function returns a limited long acceleration allowed, depending on the existing lateral acceleration
+  this should avoid accelerating when losing the target in turns
+  """
+  # FIXME: This function to calculate lateral accel is incorrect and should use the VehicleModel
+  # The lookup table for turns should also be updated if we do this
+  a_total_max = np.interp(v_ego, _A_TOTAL_MAX_BP, _A_TOTAL_MAX_V)
+  a_y = v_ego ** 2 * angle_steers * CV.DEG_TO_RAD / (CP.steerRatio * CP.wheelbase)
+  a_x_allowed = math.sqrt(max(a_total_max ** 2 - a_y ** 2, 0.))
+
+  return [a_target[0], min(a_target[1], a_x_allowed)]
+
+
+class LongitudinalPlanner:
+  def __init__(self, CP, init_v=0.0, init_a=0.0, dt=DT_MDL):
+    self.CP = CP
+    self.mpc = LongitudinalMpc(dt=dt)
+    self.fcw = False
+    self.dt = dt
+    self.allow_throttle = True
+
+    self._is_preap = (CP.brand == "tesla" and CP.carFingerprint == "TESLA_MODEL_S_PREAP"
+                       and CP.openpilotLongitudinalControl and not CP.pcmCruise)
+    self._params = Params()
+    self.nap_follow_dist = self._params.get("NAPFollowDistance", return_default=True) if self._is_preap else None
+    self.nap_adaptive_accel = self._params.get_bool("NAPAdaptiveAccel") if self._is_preap else False
+    self._frame = 0
+
+    self.a_desired = init_a
+    self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
+    self.prev_accel_clip = [ACCEL_MIN, ACCEL_MAX]
+    self.output_a_target = 0.0
+    self.output_should_stop = False
+
+    # NAP lead-dropout hysteresis: when the Bosch radar drops a frame, leadOne
+    # status flickers off briefly. Keep the adaptive accel cap held for a hold
+    # window, then linearly fade out — prevents the full-gas/full-brake cycle.
+    self._nap_last_lead_seen_frame = -1000000
+    self._nap_last_cap_value = float('inf')
+
+    self.v_desired_trajectory = np.zeros(CONTROL_N)
+    self.a_desired_trajectory = np.zeros(CONTROL_N)
+    self.j_desired_trajectory = np.zeros(CONTROL_N)
+
+  @staticmethod
+  def parse_model(model_msg):
+    if (len(model_msg.position.x) == ModelConstants.IDX_N and
+      len(model_msg.velocity.x) == ModelConstants.IDX_N and
+      len(model_msg.acceleration.x) == ModelConstants.IDX_N):
+      x = np.interp(T_IDXS_MPC, ModelConstants.T_IDXS, model_msg.position.x)
+      v = np.interp(T_IDXS_MPC, ModelConstants.T_IDXS, model_msg.velocity.x)
+      a = np.interp(T_IDXS_MPC, ModelConstants.T_IDXS, model_msg.acceleration.x)
+      j = np.zeros(len(T_IDXS_MPC))
+    else:
+      x = np.zeros(len(T_IDXS_MPC))
+      v = np.zeros(len(T_IDXS_MPC))
+      a = np.zeros(len(T_IDXS_MPC))
+      j = np.zeros(len(T_IDXS_MPC))
+    if len(model_msg.meta.disengagePredictions.gasPressProbs) > 1:
+      throttle_prob = model_msg.meta.disengagePredictions.gasPressProbs[1]
+    else:
+      throttle_prob = 1.0
+    return x, v, a, j, throttle_prob
+
+  def update(self, sm):
+    self._frame += 1
+    if self._is_preap and self._frame % 20 == 0:
+      self.nap_follow_dist = self._params.get("NAPFollowDistance", return_default=True)
+      self.nap_adaptive_accel = self._params.get_bool("NAPAdaptiveAccel")
+
+    if len(sm['carControl'].orientationNED) == 3:
+      accel_coast = get_coast_accel(sm['carControl'].orientationNED[1])
+    else:
+      accel_coast = ACCEL_MAX
+
+    v_ego = sm['carState'].vEgo
+    v_cruise_kph = min(sm['carState'].vCruise, V_CRUISE_MAX)
+    v_cruise = v_cruise_kph * CV.KPH_TO_MS
+    v_cruise_initialized = sm['carState'].vCruise != V_CRUISE_UNSET
+
+    long_control_off = sm['controlsState'].longControlState == LongCtrlState.off
+    force_slow_decel = sm['controlsState'].forceDecel
+
+    # Reset current state when not engaged, or user is controlling the speed
+    reset_state = long_control_off if self.CP.openpilotLongitudinalControl else not sm['selfdriveState'].enabled
+    # PCM cruise speed may be updated a few cycles later, check if initialized
+    reset_state = reset_state or not v_cruise_initialized
+
+    # No change cost when user is controlling the speed, or when standstill
+    prev_accel_constraint = not (reset_state or sm['carState'].standstill)
+
+    accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
+
+    # NAP profile-cap: enforce LongitudinalPersonality envelope (Chill/Standard/MadMax)
+    # on MPC's max-accel output. Without this cap, MPC uses openpilot's generic
+    # get_max_accel even when "Relaxed" personality is selected — so no-lead
+    # engage-transients hit ~1.9 m/s² avg (observed in drive 0000005a W3) instead
+    # of Chill's 0.78 m/s² at 12 m/s. Without the cap, follow-mode is the only
+    # place the personality profile actually engages.
+    if self._is_preap:
+      from opendbc.car.tesla.preap.interface import get_preap_accel_limits
+      _, preap_a_max = get_preap_accel_limits(v_ego)
+      accel_clip[1] = min(accel_clip[1], preap_a_max)
+
+    steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
+    accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
+
+    if reset_state:
+      self.v_desired_filter.x = v_ego
+      # Clip aEgo to cruise limits to prevent large accelerations when becoming active
+      self.a_desired = np.clip(sm['carState'].aEgo, accel_clip[0], accel_clip[1])
+
+    # Prevent divergence, smooth in current v_ego
+    self.v_desired_filter.x = max(0.0, self.v_desired_filter.update(v_ego))
+    _, _, _, _, throttle_prob = self.parse_model(sm['modelV2'])
+    # Don't clip at low speeds since throttle_prob doesn't account for creep
+    self.allow_throttle = throttle_prob > ALLOW_THROTTLE_THRESHOLD or v_ego <= MIN_ALLOW_THROTTLE_SPEED
+
+    if not self.allow_throttle:
+      clipped_accel_coast = max(accel_coast, accel_clip[0])
+      clipped_accel_coast_interp = np.interp(v_ego, [MIN_ALLOW_THROTTLE_SPEED, MIN_ALLOW_THROTTLE_SPEED*2], [accel_clip[1], clipped_accel_coast])
+      accel_clip[1] = min(accel_clip[1], clipped_accel_coast_interp)
+
+    if force_slow_decel:
+      v_cruise = 0.0
+
+    # Pre-AP adaptive accel: cap positive accel when close to a lead.
+    # When the lead is far (>1.5x safe distance), full profile for gap closing.
+    # When the lead is close (<1.2x safe distance), cap to follow limits to
+    # prevent overshoot → regen → overshoot oscillation. Blend in between.
+    #
+    # Lead-dropout hysteresis: 8 Hz Bosch radar drops single frames; physical
+    # lead-loss (lane change, lead leaves radar cone) can give 3-5s dropouts.
+    # Drive5f @ 60-65 km/h viste 5s lead-tap → 15.9 km/h overshoot. Forlenget
+    # 2026-05-20 fra (1.0, 1.0) til (3.0, 2.0) for 5s total dropout-tolerance.
+    # Forutsetter at lead-loss > 5s sannsynligvis er ekte (kjørefelt-skifte).
+    NAP_LEAD_HOLD_S = 3.0
+    NAP_LEAD_FADE_S = 2.0
+    if self.CP.carFingerprint == "TESLA_MODEL_S_PREAP" and self.nap_adaptive_accel:
+      follow_limit = _get_preap_follow_limit(v_ego)
+      if follow_limit is not None:
+        cap_value = None
+        if sm['radarState'].leadOne.status:
+          from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import get_safe_obstacle_distance, get_T_FOLLOW
+          t_follow = get_T_FOLLOW(sm['selfdriveState'].personality, self.nap_follow_dist)
+          safe_dist = get_safe_obstacle_distance(v_ego, t_follow)
+          lead_dist = sm['radarState'].leadOne.dRel
+          # ratio: 1.0 = at safe distance, <1.0 = closer, >1.0 = further
+          ratio = lead_dist / max(safe_dist, 1.0)
+          # Blend: full cap below 1.2x, no cap above 1.5x, linear between
+          cap_strength = float(np.clip(1.0 - (ratio - 1.2) / 0.3, 0.0, 1.0))
+          if cap_strength > 0:
+            cap_value = accel_clip[1] * (1.0 - cap_strength) + follow_limit * cap_strength
+          self._nap_last_lead_seen_frame = self._frame
+          self._nap_last_cap_value = cap_value if cap_value is not None else float('inf')
+        else:
+          # Lead lost — hold last cap, then fade out
+          elapsed_s = (self._frame - self._nap_last_lead_seen_frame) * self.dt
+          if elapsed_s <= NAP_LEAD_HOLD_S and self._nap_last_cap_value != float('inf'):
+            cap_value = self._nap_last_cap_value
+          elif elapsed_s <= NAP_LEAD_HOLD_S + NAP_LEAD_FADE_S and self._nap_last_cap_value != float('inf'):
+            fade = 1.0 - (elapsed_s - NAP_LEAD_HOLD_S) / NAP_LEAD_FADE_S
+            cap_value = self._nap_last_cap_value * fade + accel_clip[1] * (1.0 - fade)
+          else:
+            self._nap_last_cap_value = float('inf')
+
+        if cap_value is not None:
+          accel_clip[1] = min(accel_clip[1], cap_value)
+
+    self.mpc.set_weights(prev_accel_constraint, personality=sm['selfdriveState'].personality)
+    self.mpc.set_cur_state(self.v_desired_filter.x, self.a_desired)
+    self.mpc.update(sm['radarState'], v_cruise, personality=sm['selfdriveState'].personality, nap_follow_dist=self.nap_follow_dist)
+
+    self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
+    self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
+    self.j_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC[:-1], self.mpc.j_solution)
+
+    # TODO counter is only needed because radar is glitchy, remove once radar is gone
+    self.fcw = self.mpc.crash_cnt > 2 and not sm['carState'].standstill
+    if self.fcw:
+      cloudlog.info("FCW triggered")
+
+    # Interpolate 0.05 seconds and save as starting point for next iteration
+    a_prev = self.a_desired
+    self.a_desired = float(np.interp(self.dt, CONTROL_N_T_IDX, self.a_desired_trajectory))
+    self.v_desired_filter.x = self.v_desired_filter.x + self.dt * (self.a_desired + a_prev) / 2.0
+
+    action_t =  self.CP.longitudinalActuatorDelay + DT_MDL
+    output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
+                                                                        action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
+    output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
+    output_should_stop_e2e = sm['modelV2'].action.shouldStop
+
+    if sm['selfdriveState'].experimentalMode:
+      output_a_target = min(output_a_target_e2e, output_a_target_mpc)
+      self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
+      if output_a_target < output_a_target_mpc:
+        self.mpc.source = LongitudinalPlanSource.e2e
+    else:
+      output_a_target = output_a_target_mpc
+      self.output_should_stop = output_should_stop_mpc
+
+    # Rate-limit accel_clip. Asymmetric for accel_clip[1] (upper cap):
+    # cap CLOSING (lower) er trygt og safety-relevant → fortsatt 0.05/tick.
+    # cap OPENING (higher) kan gi overshoot ved lead-dropout-utløp → 0.025/tick
+    # halverer gradient (0.5 m/s²/s i stedet for 1.0 m/s²/s). Full 0.4 delta
+    # (follow-cap 0.5 → Chill-generic 0.9) tar nå 0.8 s i stedet for 0.4 s.
+    # accel_clip[0] (regen-floor) beholdes symmetrisk — ingen kjent overshoot.
+    accel_clip[0] = np.clip(accel_clip[0], self.prev_accel_clip[0] - 0.05, self.prev_accel_clip[0] + 0.05)
+    if accel_clip[1] >= self.prev_accel_clip[1]:
+      accel_clip[1] = min(accel_clip[1], self.prev_accel_clip[1] + 0.025)  # cap åpner: sakte
+    else:
+      accel_clip[1] = max(accel_clip[1], self.prev_accel_clip[1] - 0.05)   # cap lukker: rask
+    self.output_a_target = np.clip(output_a_target, accel_clip[0], accel_clip[1])
+    self.prev_accel_clip = accel_clip
+
+  def publish(self, sm, pm):
+    plan_send = messaging.new_message('longitudinalPlan')
+
+    plan_send.valid = sm.all_checks(service_list=['carState', 'controlsState', 'selfdriveState', 'radarState'])
+
+    longitudinalPlan = plan_send.longitudinalPlan
+    longitudinalPlan.modelMonoTime = sm.logMonoTime['modelV2']
+    longitudinalPlan.processingDelay = (plan_send.logMonoTime / 1e9) - sm.logMonoTime['modelV2']
+    longitudinalPlan.solverExecutionTime = self.mpc.solve_time
+
+    longitudinalPlan.speeds = self.v_desired_trajectory.tolist()
+    longitudinalPlan.accels = self.a_desired_trajectory.tolist()
+    longitudinalPlan.jerks = self.j_desired_trajectory.tolist()
+
+    longitudinalPlan.hasLead = sm['radarState'].leadOne.status
+    longitudinalPlan.longitudinalPlanSource = self.mpc.source
+    longitudinalPlan.fcw = self.fcw
+
+    longitudinalPlan.aTarget = float(self.output_a_target)
+    longitudinalPlan.shouldStop = bool(self.output_should_stop)
+    longitudinalPlan.allowBrake = True
+    longitudinalPlan.allowThrottle = bool(self.allow_throttle)
+
+    pm.send('longitudinalPlan', plan_send)
