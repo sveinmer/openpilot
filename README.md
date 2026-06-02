@@ -27,6 +27,18 @@ calibrated against a single 2014 S85 with specific retrofit modules.
   to [NotAutopilot/openpilot](https://github.com/NotAutopilot/openpilot)
 - **Use at your own risk** — driver is responsible for all consequences
 
+## Clone (with submodules)
+
+This fork uses submodules for `opendbc`, `panda`, `msgq`, `rednose`,
+`teleoprtc` and `tinygrad`. Always clone recursively, or the build will
+fail and Tesla pre-AP / F4 panda code will be missing:
+
+```bash
+git clone --recursive https://github.com/sveinmer/openpilot.git
+# or, after a non-recursive clone:
+git submodule update --init --recursive
+```
+
 ## Install on comma 3
 
 On the comma 3 setup screen → **Custom Software** → **Other**:
