@@ -39,6 +39,19 @@ git clone --recursive https://github.com/sveinmer/openpilot.git
 git submodule update --init --recursive
 ```
 
+**Git LFS is required.** UI assets (icons, fonts), the driving model
+(`*.onnx`) and most `third_party` libraries are stored as Git-LFS pointers
+backed by comma's public LFS server. With `git-lfs` installed they are pulled
+automatically by `git clone`; otherwise install it and pull once:
+
+```bash
+sudo apt-get install git-lfs   # or: brew install git-lfs
+git lfs install
+git lfs pull
+```
+
+If icons/fonts show up as ~130-byte text files, LFS did not run.
+
 ## Install on comma 3
 
 On the comma 3 setup screen → **Custom Software** → **Other**:
@@ -49,6 +62,21 @@ On the comma 3 setup screen → **Custom Software** → **Other**:
 | `dev.c3.cdma.no`  | `dev`  | Rolling — synced from private after every live deploy |
 
 URLs are HTTP 301-redirects to `installer.comma.ai/sveinmer/<branch>`.
+
+## Build / run on a PC (fork developers)
+
+After the recursive clone + LFS pull above, install dependencies and build
+with the upstream openpilot tooling:
+
+```bash
+tools/op.sh setup     # install system + Python dependencies (Ubuntu/macOS)
+tools/op.sh build     # build openpilot
+```
+
+This is the standard commaai/openpilot dev flow — see the
+[upstream development docs](https://docs.comma.ai/) for simulator, replay and
+test usage. Note that car-specific tunes here are calibrated for one S85 and
+will not match other vehicles.
 
 ## Hardware
 

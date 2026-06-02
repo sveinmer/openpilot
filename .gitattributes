@@ -17,6 +17,11 @@ third_party/**/*.a filter=lfs diff=lfs merge=lfs -text
 third_party/**/*.so filter=lfs diff=lfs merge=lfs -text
 third_party/**/*.so.* filter=lfs diff=lfs merge=lfs -text
 third_party/**/*.dylib filter=lfs diff=lfs merge=lfs -text
+
+# NAP: libyuv.a is rebuilt for the comma 3 and committed as a raw binary
+# (this fork cannot push to comma's git-lfs server). Override the rule above
+# so git does not try to renormalize it into an LFS pointer on every checkout.
+third_party/libyuv/larch64/lib/libyuv.a -filter -diff -merge -text
 third_party/acados/*/t_renderer filter=lfs diff=lfs merge=lfs -text
 third_party/qt5/larch64/bin/lrelease filter=lfs diff=lfs merge=lfs -text
 third_party/qt5/larch64/bin/lupdate filter=lfs diff=lfs merge=lfs -text

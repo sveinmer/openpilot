@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# First-time setup for MagZu/openpilot nap-C3-preap
-# Tesla Model S 2014 pre-AP on Comma 3
+# First-time setup for sveinmer/openpilot (NAP-C3 fork)
+# 2014 Tesla Model S85 pre-AP on comma 3
 #
 # Run once after cloning onto the device:
 #   bash /data/openpilot/setup_c3_preap.sh
