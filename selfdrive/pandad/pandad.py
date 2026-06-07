@@ -53,12 +53,24 @@ def flash_panda(panda_serial: str) -> Panda:
 
   if panda.bootstub or panda_signature != fw_signature:
     cloudlog.info("Panda firmware out of date, update required")
-    panda.flash()
-    cloudlog.info("Done flashing")
+    try:
+      panda.flash()
+      cloudlog.info("Done flashing")
+    except Exception:
+      # C3_F4_PANDA: the F4/DOS panda does not reliably honor the USB
+      # enter_bootstub request, so panda.flash() can fail its
+      # assert(self.bootstub). Don't abort here - fall through to the DFU-based
+      # recovery below, which enters the bootloader via GPIO (internal panda)
+      # and does work. Without this, pandad crash-loops on every fw mismatch.
+      cloudlog.exception("panda.flash() failed, falling back to DFU recovery")
 
-  if panda.bootstub:
-    bootstub_version = panda.get_version()
-    cloudlog.info(f"Flashed firmware not booting, flashing development bootloader. {bootstub_version=}, {internal_panda=}")
+  # Recover via DFU when the panda is stuck in bootstub (flashed firmware not
+  # booting) OR when normal flashing could not update the firmware (still in
+  # app mode with the wrong signature, e.g. the F4 enter_bootstub failure above).
+  needs_recovery = panda.bootstub or (panda.get_signature() != fw_signature)
+  if needs_recovery:
+    bootstub_version = "bootstub" if panda.bootstub else panda.get_version()
+    cloudlog.info(f"Flashing development bootloader via DFU. {bootstub_version=}, {internal_panda=}")
     if internal_panda:
       HARDWARE.recover_internal_panda()
     panda.recover(reset=(not internal_panda))
