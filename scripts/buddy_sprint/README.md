@@ -1,3 +1,16 @@
+# Buddy live-sprint scripts (2026-05-25, kjørt 2026-07-04)
+
+## RESULTAT — se `docs/NAP_BUDDY_0x239_FINDINGS_2026_07_04.md`
+
+Root cause bekreftet: Buddy MITM-erstatter openpilot's 0x239 med konstant
+`1001030b00011212`. Fix er på Buddy-siden (tinklaBuddy binary-logikk).
+
+T4 (AF_PACKET-versjon) og T5 (AF_PACKET-versjon) ble kjørt og verifisert 2026-07-04.
+Se `t4_dual_capture_afpacket.py` og `t5_inject_afpacket.py` — tilpasset fordi
+Buddy IKKE har tcpdump eller base64 installert.
+
+---
+
 # Buddy live-sprint pre-flighted scripts (2026-05-25)
 
 **Mål:** Identifiser kilden til konstant `7001030b80101611` på Buddy eth1 0x239
