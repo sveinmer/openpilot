@@ -4,6 +4,14 @@ Verktøy for å reversere `/opt/tinkla/bin/tinklaBuddy` (ustrippet aarch64 ELF
 m/ debug_info). Brukt til å bekrefte 0x239 DAS_lanes root cause 2026-07-04
 (se `docs/NAP_BUDDY_0x239_ROOTCAUSE_MERGED_2026_07_04.md`).
 
+## ⚠️ Oppdatering 2026-07-04 (kveld): v1.49-binæren er nå committet her
+`tinklaBuddy.v149` (Sveins FAKTISKE boks, hentet med `../live_2026_07_04/buddy_scp.py`)
+ligger i denne mappen — du slipper å hente image/binær. Reverseringen bekreftet
+at Buddy-logikken er SUNN og at latchen settes ubetinget; se
+`docs/NAP_HANDOVER_2026_07_04_KVELD_0x239_UPSTREAM_GW.md`. Root-cause er oppstrøms
+(`gw` 192.168.90.102), ikke Buddy. v1.49-offsets: `DAS_fakeDasReceived`@0x4d5c0c,
+`process_fake_das`@0x406da0, `process_DI_state`@0x406a88.
+
 ## Oppsett (portabel laptop)
 ```bash
 python3 -m venv revenv && ./revenv/bin/pip install capstone pyelftools

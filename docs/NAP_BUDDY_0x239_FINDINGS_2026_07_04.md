@@ -1,6 +1,14 @@
 # NAP Buddy 0x239 DAS_lanes — Findings 2026-07-04
 
-**Status: Root cause identifisert. Fix er på Buddy-siden.**
+> # ⚠️ SUPERSEDED 2026-07-04 (kveld) — «Fix er på Buddy-siden» er MOTBEVIST
+> Se `docs/NAP_HANDOVER_2026_07_04_KVELD_0x239_UPSTREAM_GW.md`. Buddy er frikjent:
+> 0x239 ankommer Buddys chassis-inngang (eth0:20101) ALLEREDE konstant fra kilden
+> `gw` (192.168.90.102), også onroad. `DAS_fakeDasReceived` lest live = 1. Fixen
+> er oppstrøms (panda IC-emit-cache / C3 EtherCAN). T5-tolkningen under (Buddy
+> «REPLACES_WITH_CONSTANT») var korrekt observasjon men feil årsak — Buddy
+> videresender en konstant som allerede var konstant på inngangen.
+
+**Status (opprinnelig, superseded): Root cause identifisert. Fix er på Buddy-siden.**
 
 ## Bakgrunn
 

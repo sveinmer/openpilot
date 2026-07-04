@@ -1,3 +1,11 @@
+> # ⚠️ SUPERSEDED 2026-07-04 (kveld) — KONKLUSJONEN UNDER ER MOTBEVIST
+> Se `docs/NAP_HANDOVER_2026_07_04_KVELD_0x239_UPSTREAM_GW.md`.
+> Live-bevis: (1) `DAS_fakeDasReceived` lest i Buddys /proc/PID/mem = **1**, ikke 0.
+> (2) v1.49-binæren viser at latchen settes UBETINGET (bit-testen gater den ikke).
+> (3) 0x239 ankommer Buddys chassis-inngang (eth0:20101) ALLEREDE konstant, fra
+> kilden `gw` (192.168.90.102) — Buddy er en ren videresender. Fixen er oppstrøms
+> (panda IC-emit-cache / C3 EtherCAN), IKKE Buddy og IKKE 0x659-latchen.
+
 # NAP Buddy 0x239 — samlet root-cause (to uavhengige spor konvergerer) 2026-07-04
 
 Forener **live-sesjonen ved bilen** (Sonnet, pushet til public `main`
