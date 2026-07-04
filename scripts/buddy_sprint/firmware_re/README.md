@@ -7,10 +7,28 @@ m/ debug_info). Brukt til å bekrefte 0x239 DAS_lanes root cause 2026-07-04
 ## Oppsett (portabel laptop)
 ```bash
 python3 -m venv revenv && ./revenv/bin/pip install capstone pyelftools
-# hent Buddys FAKTISKE binær (v1.49) fra boksen — versjon avviker fra
-# firmware-arkivets v1.44, så bit-offset MÅ leses fra live-binæren:
+```
+
+### Hent tinklaBuddy-binæren
+
+**A) Fra lokalt image (raskest — ingen mount/root nødvendig, via debugfs):**
+```bash
+IMG=tinklaBuddy-R2S-1.44-11.11.2022.img            # dekomprimer .img.gz først
+# p9 = userdata (overlayfs upper). Start-sektor fra: fdisk -l $IMG
+# (i R2S-1.44-imaget: p9 start=4038656). Appen: /root/opt/tinkla.
+debugfs -R "dump /root/opt/tinkla/bin/tinklaBuddy ./tinklaBuddy.v144" \
+  <(dd if=$IMG bs=512 skip=4038656 2>/dev/null)   # el. dd p9 til egen fil først
+```
+Binæren er **ustrippet aarch64 ELF m/ debug_info** → full symbol-reversering.
+
+**B) v1.49 fra den KJØRENDE boksen (for endelig offset-bekreftelse):**
+```bash
 scp pi@10.5.5.1:/opt/tinkla/bin/tinklaBuddy ./tinklaBuddy.v149   # pass: pi
 ```
+Det lokale imaget er **v1.44**; Sveins boks kjører **v1.49**. Mekanismen
+(process_DI_state-gate + process_fake_das-latch) er nær sikkert identisk, men
+den EKSAKTE latch-bit-offset må bekreftes mot v1.49 før en openpilot-fix skrives.
+Gjør all groundwork på v1.44 lokalt nå; bekreft biten mot v1.49 til slutt.
 
 ## Verktøy
 - `disas.py <binær> <symbol> [...]` — disassembler navngitt(e) funksjon(er)
