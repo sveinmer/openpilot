@@ -1,160 +1,102 @@
-# NAP Fix-plan — 0x239 IC-kurver (utkast 2026-07-10)
+# NAP Fix-plan — 0x239 IC-kurver (v2, 2026-07-10 kveld — ROTÅRSAK BEVIST)
 
-**Status:** Rotårsak IKKE 100% bekreftet. Denne planen er diagnose-først:
-avklar rotårsak med kode-uavhengige tester, DERETTER fiks per utfall. Ikke
-implementer en fiks før Fase 0 peker entydig. Svein presset (berettiget) på at
-«koden var bit-lik» — hvis sant, er fiksen RUNTIME/STATE, ikke kode.
+**Status:** Rotårsak bevist på artefakt-nivå — se
+`NAP_FINDINGS_2026_07_10_IC_ROTARSAK_BEVIST.md` (beviskjede L1–L7).
+Denne planen erstatter v1-utkastet fullstendig (v1 i git-historikken).
+V1s «reboot og la pandad flashe» ville vært en **no-op**: pandad verifiserer
+mot den committede `panda.bin.signed`, som ER den stale kjørende binæren.
 
-## Bekreftet tilstand (solid, live-målt 2026-07-10)
-- NAP openpilot sender **0x239 range=50 frisk på CAN bus 0** (engasjert + parkert).
-- Tesla GTW (.102=gw) **eier vision-sloten**: sender idle 0x239 (range=1) + null
-  0x309 til ethernet; broer status-frames (0x659/0x399/0x389) korrekt.
-- Buddy (.103=ape) **forwarder** GTW's idle 0x239 byte-identisk.
-- GTW_status 0x348 IC-trigger ankommer. Panda red (0x06), safety_param=15.
-- IC-frames er display-only (risk-tier 3, ingen kjøre-/aktuator-effekt) →
-  lav-risiko å endre.
-
-## Rotårsak-kandidater (rangert)
-- **K1 — Panda/Buddy IC-injeksjon runtime-død** (mest sannsynlig gitt «bit-lik kode»)
-- **K2 — Vision-injeksjon når aldri IC-slot** (arkitektur/kanal; kode hvis endret)
-- **K3 — Param/fingerprint/state endret ved bil-bytte**
-- **K4 — C3-kode avviker fra 06-20** (motbeviser «bit-lik» — må sjekkes direkte)
+**Rotårsak:** Kjørende panda-firmware er bygget 12.–19. mai fra
+MagZu-æra-kilde, FØR IC-generatoren fantes. Den stale binæren er committet i
+`nap-c3-panda` og shippes av public git; pandad ser aldri mismatch. Fiksen er
+å få et **gjenbygg av dagens kilde** signert, committet og flashet — helt i
+tråd med kravet: permanent, i public repo, ingen device-hacks.
 
 ---
 
-## FASE 0 — Avklar rotårsak (ingen kode-endring, mest kode-uavhengig først)
+## FASE 0 — Pre-flight (før noe flashes)
 
-**0.1 Verifiser «bit-lik kode» DIREKTE på C3 (ikke anta):**
-- `ssh comma@192.168.0.65` → `cd /data/openpilot && git log --oneline -5 && git status --short`
-  og submodule `opendbc_repo` samme. Er HEAD/working-tree = det som kjørte 06-20?
-  (Tidligere handover: opendbc-tree var «dirty med vilje» pga sweep-patch —
-  sjekk om patchen er reverted; original sha256 i 07-02-handover.)
-- Panda-firmware: `Panda().get_version()` / git-versjon. Ble panda re-flashet
-  ved bil-byttet? Sammenlign mot 06-20 hvis mulig.
-- **Utfall:** kode/firmware avviker → K4 (checkout/flash korrekt). Bit-lik → K1/K3.
+Den nye binæren endrer mer enn IC (MagZu-treet → NAP F4-revive-treet er stor
+kildedivergens, jf. 25k-linjers-diffen fra 07-01-økten). Kjørende binær er
+empirisk trygg for kjøring; den nye er det på papiret (dagens kilde er den
+sprint-reviewede NAP-koden alle trodde kjørte).
 
-**0.2 Kjører panda IC-emitteren? (counter-rotasjon — kode-uavhengig):**
-- Les nyeste rlog offline: fordeling av `byte7>>4` (DAS_lanesCounter) på 0x239.
-  Verktøy: `scripts/nap_ic_curve_analysis/live_2026_07_10/` (utvid til counter).
-- Panda IC-emit roterer counter 0..15; openpilot-direkte = konstant 1.
-- **Utfall:** kun {1} → panda IC-emit DØD (K1). Roterer 0..15 → IC-emit lever
-  (da er problemet nedstrøms: injeksjonskanal/Buddy → K2).
+- **0.1 Diff-gjennomgang av aktuatorbaner** mellom MagZu-commit `90387239`
+  (finnes i C3s panda-repo-objekter) og dagens kilde: tx_hook-grenser for
+  0x488/0x2B9/0x214/0x551, rx-checks, relay-logikk. Kilden til 90387239:
+  `git -C /data/openpilot/panda show 9038723938a5:<fil>` + opendbc-safety slik
+  MagZu-linjen brukte den. Mål: ingen overraskelser i det som styrer bilen.
+- **0.2 Kjør opendbc safety-testene** for tesla_preap lokalt
+  (`opendbc_repo/opendbc/safety/tests/`) — de dekker IC-generatoren
+  (introspeksjons-getterne finnes nettopp for dette).
+- **0.3 Kjør provenansvakten** (baseline FØR fiks — skal FEILE på committet
+  binær): `scripts/nap_fw_provenance/check_fw_provenance.py`.
 
-**0.3 IC-params i KJØRENDE prosess (ikke bare disk):**
-- `NAPTinklaICIntegration`, `NAPForcePreAP`, `CarParamsPersistent` fingerprint.
-- Bekreft `enableICIntegration=True` i kjørende carstate (proxy: sender openpilot
-  status-frames 0x399/0x659? — ja, bevist, så True). Panda `preap_has_ic_integration`
-  = safety_param bit 3 (=15 → satt).
-- **Utfall:** param feil i prosess tross disk-verdi → K3 (reboot-rekkefølge).
+## FASE 1 — Permanent fiks (repo-nivå)
 
-**0.4 Hvordan nådde 06-20-vision IC? (avgjør K2):**
-- Skaff Tinkla safety (`safety_tesla.h`, `teslaPreAp_send_IC_messages` ~L805 —
-  refereres i vår tesla_preap.h). Hvilken bus/kanal injiserte Tinkla 0x239 på?
-- Sjekk om NAP-panda `preap_ic_send_messages` (bus 0) er ment å nå IC-slot, eller
-  om Buddy (ape) skal injisere. Buddy forwarder nå — SKAL den bygge/erstatte?
-  (process_DI_state bygger 0x239 fra state, men lane-geometri-kilden er uklar —
-  åpen tråd fra 07-10-økten.)
+1. **Bygg + signer på C3** (arm-none-eabi-gcc finnes på device):
+   `ssh comma@C3 'cd /data/openpilot/panda && scons board/obj/panda.bin.signed'`
+   Verifiser at `obj/panda.bin.signed` nå embedder `DEV-02f19e33-DEBUG` og
+   består provenansvakten (IC-tabell til stede).
+2. **Commit den nye binæren til `nap-c3-panda@main`** (deployment-modellen er
+   committede binærer — behold den, men med vakt, se Fase 3):
+   `board/obj/panda.bin.signed` (+ `bootstub.panda.bin` hvis endret).
+   Oppdater panda-submodule-pin i `sveinmer/openpilot@main`.
+3. **Flash:** restart pandad (reboot C3). pandad ser nå signatur-mismatch
+   kjørende(90387239) vs fil(02f19e33) → auto-flash (`pandad.py:54`). F4-panda
+   kan trenge DFU-recovery-stien (`5c63134`-commiten finnes nettopp for det).
+4. **Verifiser flash:** `Panda().get_version()` → `DEV-02f19e33-DEBUG`
+   (via pandad-logg / PandaSignatures-param, ikke USB-kapring mens openpilot
+   kjører).
 
----
+**Beslutning for Svein før Fase 1:** flash-tidspunkt (bilen hjemme, ikke i
+bruk) og om 0.1-diffen godkjennes. Claude utfører ikke flash uten klarsignal.
 
-## FASE 1 — Fiks per bekreftet rotårsak
+## FASE 2 — Måling (avgjør om fiksen er tilstrekkelig)
 
-### Hvis K4 (kode/firmware avviker)
-- Checkout/reflash til den versjonen som kjørte 06-20. Laveste risiko, ingen
-  ny kode. Verifiser med Fase 2.
+1. **CAN bus 0:** 0x239 skal nå ha ROTERENDE counter (0..15) i tillegg til
+   openpilots counter=1-originaler. Offline rlog-sjekk med eksisterende
+   verktøy (`scripts/nap_ic_curve_analysis/live_2026_07_10/`). 10 Hz-takt
+   styrt av 0x348.
+2. **Ethernet (Buddy-siden):** blir GTWs 0x239 mot IC nå range=50/varierende
+   (ikke idle range=1)? Verktøy:
+   `scripts/buddy_sprint/live_2026_07_04/onroad_0x239_source.py`.
+3. **IC-foto/video i kjent sving** — objektiv før/etter.
 
-### Hvis K1 (panda IC-emit runtime-død, kode bit-lik)
-- Finn hvorfor emit ikke produserer tross safety_param=15:
-  - `preap_ic_emit_message` returnerer hvis `!cache.valid`. Cachen fylles av
-    `preap_ic_capture_tx` (gated `tx && preap_has_ic_integration`). Sjekk om
-    openpilots 0x239 faktisk treffer capture (tx_hook-sti).
-  - Boot-rekkefølge: settes safety-param FØR første IC-TX? Hvis param settes
-    sent, kan tidlig state være feil til reboot.
-- **Fiks:** kald reboot av C3+panda med NAPTinklaICIntegration bekreftet satt
-  FØR manager forker (lav-risiko, ingen kode). Hvis capture-gate er buggen:
-  minimal panda-patch — men KUN hvis 0.1 viser koden faktisk endret.
+**Utfall A (kurver tilbake):** ferdig. Gå til Fase 3.
+**Utfall B (rotasjon på CAN, men GTW broer fortsatt idle):** eneste
+gjenværende delta mot fungerende Tinkla er duplikat-originalene → Fase 2b.
 
-### Hvis K2 (vision når aldri IC-slot — kanal/arkitektur)
-- GTW eier 0x239/0x309-sloten; bus-0-injeksjon broes ikke. Alternativer:
-  - **(a) Buddy-injeksjon:** få Buddy (ape) til å erstatte GTW's idle 0x239 på
-    eth1 med openpilots lane-data. Krever at openpilots lane-data når Buddy
-    (i dag gjør den ikke — gw broer ikke vision). Undersøk om Tinkla matet Buddy
-    via en egen frame/kanal.
-  - **(b) Panda APE-kanal:** injiser 0x239/0x309 slik at GTW ser dem som
-    APE-output (Tinkla brukte src=192/bus64). KODE-endring i panda IC-emit-bus.
-    KUN hvis 0.1 viser at NAP-koden faktisk skal gjøre dette og regredierte.
-- **Advarsel:** (b) er en reell kode-endring på et system som «virket med bit-lik
-  kode» — motsier bit-lik-premisset. Ikke gjør (b) før K4/K1/K3 er utelukket.
+### FASE 2b — Tinkla-paritet TX-block (kun ved utfall B)
+Port Tinklas semantikk 1:1 (`safety_tesla.h` `fwd_data_message`): når
+IC-integration er på, **blokker openpilots original-TX** for de 8 gatede
+IC-adressene etter capture (`tesla_preap.h` tx_hook ~L806: capture beholdes,
+returnér `tx=false` for cache-adressene). Da eier panda-generatoren counteren
+alene — nøyaktig konfigurasjonen som beviselig ga kurver. Kodeendring i
+opendbc → sprint-regime: test i libsafety først (capture→emit→counter-eierskap),
+så ny runde Fase 1 (bygg/sign/commit/flash) + Fase 2.
 
-### Hvis K3 (param/state)
-- Sett korrekt param, kald reboot, re-fingerprint hvis nødvendig. Verifiser
-  CarParamsPersistent = TESLA_MODEL_S_PREAP + IC-params. Lav-risiko.
+## FASE 3 — Permanent riggforbedring (så dette ALDRI skjer igjen)
 
----
+1. **Provenansvakt (levert i denne økten):**
+   `scripts/nap_fw_provenance/check_fw_provenance.py` —
+   sammenligner committet/kjørende binær mot innholdsmarkører generert FRA
+   dagens kilde (IC-adressetabellen parses ut av `tesla_preap.h`, aldri
+   hardkodet). Kjøres: (a) ved sesjonsstart før CAN-feilsøking, (b) før
+   commit av binærer i nap-c3-panda, (c) mot C3 med `--c3` (read-only ssh).
+2. **Sesjonprotokoll-regel (kanonisert i memory):** før feilsøking av
+   CAN-adferd: bevis at koden du leser er koden som kjører (provenansvakt),
+   ellers er all kildelesing potensielt arkeologi i feil lag.
+3. **Anbefalt oppfølging (egen beslutning):** gjør panda-versjonsstrengen
+   innholdsderivert (hash av kildefil-manifest: board/ + opendbc safety) i
+   stedet for cwd-avhengig git-HEAD — da blir stale artefakter synlige i
+   selve versjonsstrengen. Endring i `panda/SConscript:26`.
+4. **Rydding:** gjenopprett/skriv `.claude/SPRINT_PROTOCOL.md`; revert C3s
+   inerte `hud_module.py`-sweep-patch; NTP/klokke-sjekk i sesjonstart
+   (C3 sto på 2025 den 07-02).
 
-## FASE 2 — Verifisering (samme for enhver fiks)
-1. **Counter-rotasjon** på 0x239 tilbake (hvis K1) — rlog offline.
-2. **Ethernet-capture på Buddy:** 0x239 fra gw/ape = range=50 varierende (ikke
-   idle). Verktøy: `scripts/buddy_sprint/live_2026_07_04/onroad_0x239_source.py`.
-3. **Foto/video av IC** i kjent sving — kurver animerer. Objektivt før/etter.
-4. Kjør en rute, bekreft stabilt over tid.
-
-## Sikkerhet / risiko
-- IC-frames = display-only, risk-tier 3 (tesla_preap.h). Ingen aktuator-/engage-
-  effekt. Reboot og param-endringer er lav-risiko.
-- Kode-endring i panda (K2b) berører safety-firmware — krever full kausalkjede-
-  gjennomgang + test før flash. Siste utvei.
-- Følg `feedback_buddy_temp_only`: ingen permanente Buddy-endringer uten bevis.
-
-## Anbefalt rekkefølge
-0.1 → 0.2 → 0.3 (raske, kode-uavhengige, offline/rlog) → 0.4 (kodeanalyse) →
-velg fiks. Start ALLTID med laveste-risiko utfall (K4 checkout / K3 reboot)
-før kode-endring (K2b).
-
----
-
-## OPPDATERING 2026-07-10 (kveld) — ROTÅRSAK-KANDIDAT: panda-firmware-mismatch
-
-Live-diagnostikk (C3 @ 192.168.0.65) + diff mot fungerende Tinkla-kildekode
-(`/home/svein/repos/Tinkla`) peker sterkt på:
-
-**Panda kjører feil firmware. IC-emitteren er død.**
-- Panda `get_version()` = **`DEV-90387239-DEBU`** — commit `90387239` finnes
-  IKKE i NAP-panda-historikken (fremmed/gammel firmware).
-- C3-kode + bygget firmware = **`02f19e33`** (`obj/version` = `DEV-02f19e33-DEBUG`).
-- **Panda IC-emit produserer ingenting:** 0x239 på CAN har KUN counter={1} (212
-  frames) = openpilots direkte TX (counter=1 hardkodet). Panda re-emit (som
-  roterer counter 0..15, jf. `preap_ic_apply_counter`) mangler helt.
-- Tinkla (virket) hadde ROTERENDE counter på 0x239 → panda IC-emit var aktiv.
-
-**Hypotese (forklarer HELE historien + «bit-lik kode»):** Bil-byttet
-Tesla→Ampera→Tesla flashet panda med annen firmware (Ampera/stock). Tilbake-
-flash til NAP-panda-firmware skjedde ikke / feilet (jf. commit 5c63134 «pandad
-DFU-recovery når panda.flash() ikke kan entre bootstub» — F4/DOS-panda honorerer
-ikke alltid enter_bootstub). Python-koden (openpilot) forble bit-lik, men den
-FLASHEDE panda-firmwaren er stale → NAP IC-emit finnes ikke i den → 0x239 sendes
-kun med konstant counter=1 → GTW/IC behandler den som stale/ugyldig APE-output
-→ IC viser idle-lanes. «Kode-injeksjonene» = manuell panda-flash/DFU-fikling
-under bil-byttene.
-
-**IKKE 100% bevist (ærlig):** kunne ikke inspisere 90387239-firmwaren innhold,
-og ikke bevist at flashing 02f19e33 gjenoppretter kurvene. `get_signature()`-
-sjekken var inkonklusiv (fw-fil-sti feil). Krever verifisering.
-
-### PERMANENT FIKS (ingen device-injeksjon — installer korrekt repo-firmware)
-1. **Bekreft mismatch definitivt:** `panda.get_signature()` vs bygget
-   `panda.bin.signed`. Hvis ulik → panda kjører feil fw, pandad burde flashe.
-2. **Re-flash panda med NAP-firmware (02f19e33):** `cd /data/openpilot/panda &&
-   python -c "from panda import Panda; Panda().flash()"` ELLER reboot og la
-   pandad flashe. Hvis panda.flash() feiler (F4 bootstub) → DFU-recovery
-   (5c63134-stien). Dette INSTALLERER den committede firmwaren fra
-   sveinmer/openpilot — ikke en hack.
-3. **Hvis pandad ikke auto-flasher tross mismatch → DET er repo-bugen.** Fiks
-   flash-betingelsen i `selfdrive/pandad/pandad.py` (permanent kode-fiks i repo).
-4. **Verifiser (Fase 2):** 0x239 counter roterer (rlog offline) + Buddy-ethernet
-   0x239 range=50 varierende + foto av IC-kurver i sving.
-
-### Sikkerhet
-Re-flash er standard panda-operasjon (pandad gjør det ved hver boot ved mismatch).
-Firmwaren er den committede NAP-panda (02f19e33), ikke ny/uverifisert kode. Lav
-risiko. Rydd også C3s inerte hud_module sweep-patch (uncommittet) for ren tilstand.
+## Sikkerhet
+- IC-frames er display-only (risk-tier 3). Flash-operasjonen er standard
+  pandad-mekanikk. Risikoen ligger i kildedivergensen for aktuatorbaner →
+  derfor Fase 0.1-diffen som eksplisitt gate.
+- Ingen Buddy-endringer (feedback_buddy_temp_only respekteres).
