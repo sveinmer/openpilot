@@ -100,3 +100,38 @@ så ny runde Fase 1 (bygg/sign/commit/flash) + Fase 2.
   pandad-mekanikk. Risikoen ligger i kildedivergensen for aktuatorbaner →
   derfor Fase 0.1-diffen som eksplisitt gate.
 - Ingen Buddy-endringer (feedback_buddy_temp_only respekteres).
+
+---
+
+## FASE 0 — UTFØRT 2026-07-10 (kveld): **GO anbefalt**
+
+**0.2 Safety-tester: GRØNN.** `opendbc/safety/tests/test_tesla_preap.py`:
+**100 passed, 10 skipped** (libsafety bygget lokalt, uv + pytest). Dekker
+vinkelgrenser (steer_angle_cmd_checks_vm), disengage (dør/gir/brems/gass),
+pedal-gating, IC TX-gate OG hele IC-generatoren (cache-capture, 0x348-
+dispatch, emission-gating, flagg av/på).
+
+**0.1a Panda-tre-diff 90387239→02f19e33 (110 filer, +25 730/−556):**
+- ~24k linjer = NYE F4-plattformfiler (vendor-headere stm32f413xx.h 15k,
+  CMSIS 4k, HAL, startup-asm, linker-script, bxcan-driver, dos.h) — gjenopplivet
+  plattformstøtte, ikke logikkendring.
+- Delte filer: små upstream-refaktorer (can_silent → enum, include-gating per
+  MCU, array-size-navn). Tesla-ignition via 0x348 på bus 0 er VIDEREFØRT og
+  hardnet (counter-validering; kommentaren refererer eksplisitt MagZu-port
+  fra 90387239). Irrelevant hw (jungle/sound/siren/fan-H7) utgjør resten.
+- Dette forklarer også siste uforklarte binær-observasjon: gammel binær har
+  2× `cmp #0x348` (ignition), ny har 4× (ignition + IC-dispatcher).
+
+**0.1b Aktuator-konstanter på binærnivå (kjørende vs fersk main.bin):**
+identisk profil — angle-offset 0x4000: 12 treff begge; angle_meas 0x2000: 18
+begge; pedal-terskel 500: 8 begge; `slip_factor` −0.0005666 (float) funnet i
+begge (0x9da4 / 0xa0b0). Gammel og ny firmware håndhever samme grenser.
+
+**Restrisiko (eneste reelle):** 02f19e33-F4-binæren har aldri bootet på
+bilens panda (første kjøring av F4-revive-porten). Mitigering = staged
+Fase 1: flash PARKERT → sjekk pandaState/health + CAN-trafikk + 0x239-
+counter-rotasjon parkert → kort testkjøring før normal bruk.
+**Rollback:** gammel binær (blob `04dab0e5`) ligger i nap-c3-panda-
+historikken — reflash gjenoppretter eksakt dagens tilstand.
+
+**Konklusjon: GO for Fase 1 ved Sveins klarsignal.**
