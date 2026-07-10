@@ -135,3 +135,38 @@ counter-rotasjon parkert → kort testkjøring før normal bruk.
 historikken — reflash gjenoppretter eksakt dagens tilstand.
 
 **Konklusjon: GO for Fase 1 ved Sveins klarsignal.**
+
+---
+
+## FASE 1 — UTFØRT 2026-07-10 kl 15:43–15:50: **FLASH VELLYKKET OG VERIFISERT**
+
+1. **Bygg på C3:** kompilering OK. Sign-steget FEILET først — og avslørte
+   dermed 07-02-mysteriet live: `sign.py` kjøres via shebang → system-python
+   uten pycryptodome → sign feiler stille etter kompilering. Nøyaktig slik ble
+   den stale binæren stående 07-02. Signert manuelt med venv-python:
+   `SETLEN=1 /usr/local/venv/bin/python crypto/sign.py …` → OK.
+2. **Reproduserbarhet:** ny main.bin sha256 `c11bef3a…` == 07-02-builden
+   bit-identisk. Signert fil `7aca9370…`, embedder `DEV-02f19e33-DEBUG`.
+3. **Provenansvakt: GRØNN** på ny binær (IC-tabell funnet), både lokalt og --c3.
+4. **Flash:** reboot 15:44:32 → pandad så mismatch (kjørende `8c182a26` vs
+   forventet `223023b5`) → «Done flashing» → **PandaSignatures-param ==
+   ny fil-signatur `223023b5a2eb4415…`. Kjørende firmware ER den nye.**
+   Ingen DFU-recovery nødvendig.
+5. **Health parkert (første boot av F4-revive på bilens panda):** pandaType
+   `dos`, faultStatus `none`, faults `[]`, harness `normal` — frisk.
+6. **Kanonisert:** nap-c3-panda@main `cf5f660` = ny binær + SConscript-fiks
+   (sign.py kjøres nå med `sys.executable` — permanent fiks for shebang-fella).
+   Bootstub beholdt (bevist fungerende; app-adresse uendret 0x8004000).
+
+**Oppfølging (småting):**
+- C3s panda-checkout står på 02f19e33 + dirty (binær-innhold == committet
+  `cf5f660`-innhold; kun git-metadata) — align ved neste anledning:
+  `git fetch origin && git checkout FETCH_HEAD` i /data/openpilot/panda.
+
+### → NESTE: FASE 2-måling (krever tenning/kjøretur)
+1. Tenning på (parkert): 0x348 begynner å flyte → les nyeste rlog:
+   0x239 skal nå ha ROTERENDE counter (0..15) i tillegg til counter=1.
+2. Ethernet-capture Buddy-siden: broer GTW nå frisk 0x239 (range=50)?
+3. Foto/video av IC i kjent sving.
+Utfall B (rotasjon på CAN men GTW broer fortsatt idle) → Fase 2b (Tinkla
+TX-block-paritet).
