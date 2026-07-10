@@ -31,7 +31,7 @@ Binæren er **ustrippet aarch64 ELF m/ debug_info** → full symbol-reversering.
 
 **B) v1.49 fra den KJØRENDE boksen (for endelig offset-bekreftelse):**
 ```bash
-scp pi@10.5.5.1:/opt/tinkla/bin/tinklaBuddy ./tinklaBuddy.v149   # passord: BUDDY_PASS (lokal memory)
+scp pi@10.5.5.1:/opt/tinkla/bin/tinklaBuddy ./tinklaBuddy.v149   # passord: BUDDY_PASS. Binæren er Tinkla-proprietær: holdes UTRACKET (gitignorert), hentes fra Buddy ved behov.
 ```
 Det lokale imaget er **v1.44**; Sveins boks kjører **v1.49**. Mekanismen
 (process_DI_state-gate + process_fake_das-latch) er nær sikkert identisk, men

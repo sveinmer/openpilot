@@ -102,3 +102,7 @@ evidence/**/*.hevc
 evidence/**/qcamera.ts
 evidence/**/qlog
 evidence/**/rlog*
+
+# Tinkla proprietær firmware — analyseres lokalt, redistribueres ikke
+scripts/buddy_sprint/firmware_re/tinklaBuddy.v149
+tinklaBuddy.v1*
