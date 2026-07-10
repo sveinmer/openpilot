@@ -11,7 +11,7 @@ Resultat-tolkning:
   REPLACES_WITH_CONSTANT -> Buddy har aktiv IC-generator som overrider alt
   DROPS_OR_EMPTY         -> Buddy droppet framen, ingen 0x239 på eth1
 
-Krav: /tmp/buddy_ssh.py (pexpect-wrapper, pi/pi @ 10.5.5.1)
+Krav: /tmp/buddy_ssh.py (pexpect-wrapper, pi@10.5.5.1 (passord: BUDDY_PASS, lokal memory))
 """
 import subprocess, sys, json
 

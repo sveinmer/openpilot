@@ -23,7 +23,7 @@ forskjell til «fremmed firmware». Det er en slutning, ikke et bevis.**
 ## 1. Hva som FAKTISK er bevist (direkte målt, Svein kan reprodusere selv)
 
 Verktøy: `scripts/nap_ic_curve_analysis/live_2026_07_10/`. C3 @ 192.168.0.65
-(comma@, nøkkel), Buddy @ 10.5.5.1 (pi/pi, kun Tinkla-nett).
+(comma@, nøkkel), Buddy @ 10.5.5.1 (pi@, passord i lokal memory, kun Tinkla-nett).
 
 - **openpilot sender 0x239 range=50 på CAN bus 0** — frisk lane-data (engasjert
   lat+long rute 00000171, uniq=383; + parkert). Reproduserbart offline på rlog.
@@ -110,7 +110,7 @@ HUD_module.py) — den fungerende implementasjonen å porte 1:1 mot.
 ## 7. Tilgang / verktøy
 - C3: `ssh comma@192.168.0.65` (hjemme) / `10.5.5.125` (Tinkla-nett), nøkkel-auth.
   cereal: `PYTHONPATH=/data/openpilot /usr/local/venv/bin/python` fra `/data/openpilot`.
-- Buddy: `10.5.5.1` pi/pi (kun Tinkla-nett), AF_PACKET (ingen tcpdump).
+- Buddy: `10.5.5.1` pi@ (passord i lokal memory, kun Tinkla-nett), AF_PACKET (ingen tcpdump).
 - Tinkla-referansekode: `/home/svein/repos/Tinkla`. Replay-rig: `/home/svein/repos/nap-replay-rig`.
 - Rlogs: `/data/media/0/realdata/` (NAP nummer-stil 07-08→; Tinkla dato-stil 04-30→05-08).
 - Verktøy denne økten: `scripts/nap_ic_curve_analysis/live_2026_07_10/`.

@@ -149,7 +149,7 @@ bekreftet at IC-emit/EtherCAN-laget er synderen, ikke openpilots lane-encoding.
 ## 6. Verktøy committet denne økten
 
 `scripts/buddy_sprint/live_2026_07_04/`:
-- `buddy_ssh.py` — pexpect SSH-wrapper (pi/pi @ 10.5.5.1), kommando som SSH-arg.
+- `buddy_ssh.py` — pexpect SSH-wrapper (pi@10.5.5.1 (passord: BUDDY_PASS, lokal memory)), kommando som SSH-arg.
 - `buddy_scp.py` — pexpect scp-wrapper (hentet v1.49-binæren).
 - `read_buddy_state.py` — leser tinklaBuddy state-globals live via /proc/PID/mem
   (DAS_fakeDasReceived m.fl.). ET_EXEC → faste adresser.

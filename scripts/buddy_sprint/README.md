@@ -25,7 +25,7 @@ Trap-atomic, reversibel, idempotent.
 - c3 booted (slik at panda emitterer 0x239 — vi observerer dette nedstrøms)
 - Sveins er parkert med bil på (controlsd-aktiv state)
 - Dev-box har Wi-Fi-tilkobling til samme nett som Buddy (10.5.5.1/24)
-- pi/pi creds for Buddy (eksisterende `/tmp/buddy_ssh.py`-wrapper)
+- Buddy-creds (pi@ + BUDDY_PASS/lokal memory) (eksisterende `/tmp/buddy_ssh.py`-wrapper)
 
 ## Skript-oversikt
 

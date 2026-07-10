@@ -4,7 +4,7 @@ Verktøyene som beviste at 0x239 ankommer Buddy allerede-konstant fra `gw`
 (192.168.90.102), ikke genereres av Buddy. Se
 `docs/NAP_HANDOVER_2026_07_04_KVELD_0x239_UPSTREAM_GW.md`.
 
-**Forutsetning:** dev-boks på Buddy-WiFi `tinklaAP` (Buddy @ 10.5.5.1, pi/pi).
+**Forutsetning:** dev-boks på Buddy-WiFi `tinklaAP` (Buddy @ 10.5.5.1, pi@ + BUDDY_PASS).
 Buddy har IKKE tcpdump/base64 → alt bruker AF_PACKET-Python via `sudo`.
 Alle scripts kaller `buddy_ssh.py` (ligger i samme mappe — kopier begge til
 `/tmp/` eller kjør fra denne mappen; scriptene peker på `/tmp/buddy_ssh.py`,

@@ -4,7 +4,7 @@
 Kjørt og verifisert 2026-07-04. Bruker custom AF_PACKET sniffer fordi
 Buddy (Ubuntu 20.04 aarch64) ikke har tcpdump eller base64 installert.
 
-Krav: /tmp/buddy_ssh.py (pexpect-wrapper, pi/pi @ 10.5.5.1)
+Krav: /tmp/buddy_ssh.py (pexpect-wrapper, pi@10.5.5.1 (passord: BUDDY_PASS, lokal memory))
       Bil kjørende (IsOnroad=1) for at openpilot sender DAS-frames
 
 Bruk: python3 t4_dual_capture_afpacket.py [duration_sek]

@@ -5,7 +5,7 @@
 #
 # Pre-conditions:
 #   1. Dev-box må være på Buddy WiFi (10.5.5.x) - du må fysisk koble til
-#   2. /tmp/buddy_ssh.py må eksistere (pexpect-wrapper for pi/pi@10.5.5.1)
+#   2. /tmp/buddy_ssh.py må eksistere (pexpect-wrapper for pi@10.5.5.1, BUDDY_PASS)
 #   3. Test connectivity: python3 /tmp/buddy_ssh.py "hostname" → tb-XXXX-Tesla
 #   4. C3 onroad (panda emitterer 0x239 vi observerer nedstrøms)
 #

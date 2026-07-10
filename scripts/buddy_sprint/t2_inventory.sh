@@ -2,7 +2,7 @@
 # T2 — Buddy live-inventory: prosesser, sockets, nett-topologi.
 # Output: $OUTDIR/t2_inventory/*.txt
 #
-# Krav: Buddy nåbar via /tmp/buddy_ssh.py (pi/pi @ 10.5.5.1)
+# Krav: Buddy nåbar via /tmp/buddy_ssh.py (pi@10.5.5.1 (passord: BUDDY_PASS, lokal memory))
 # Tid: <1 min
 
 set -euo pipefail

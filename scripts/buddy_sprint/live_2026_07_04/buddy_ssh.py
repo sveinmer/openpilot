@@ -1,18 +1,32 @@
 #!/usr/bin/env python3
-"""Robust pexpect SSH-wrapper for Tinkla Buddy (pi/pi @ 10.5.5.1).
+"""Robust pexpect SSH-wrapper for Tinkla Buddy (bruker pi @ 10.5.5.1).
 
 Passes the remote command as a single ssh argument (no interactive shell /
 prompt-matching), answers the password once, then streams remote stdout to
 our stdout until EOF. Exit status mirrors ssh's.
 
+Passord leses fra env BUDDY_PASS eller ~/.config/nap/buddy_pass (én linje).
+Aldri hardkod det her — repoet er public.
+
 Usage: python3 /tmp/buddy_ssh.py "<remote command>"
 """
+import os
 import sys
+from pathlib import Path
 import pexpect
 
 HOST = "10.5.5.1"
 USER = "pi"
-PASS = "pi"
+
+
+def buddy_pass() -> str:
+    pw = os.environ.get("BUDDY_PASS")
+    if pw:
+        return pw
+    f = Path.home() / ".config/nap/buddy_pass"
+    if f.exists():
+        return f.read_text().strip()
+    sys.exit("[buddy_ssh] sett BUDDY_PASS eller legg passordet i ~/.config/nap/buddy_pass")
 
 def main():
     if len(sys.argv) < 2:
@@ -33,7 +47,7 @@ def main():
     # First interaction: the login password prompt.
     i = child.expect(["[Pp]assword:", pexpect.EOF, pexpect.TIMEOUT])
     if i == 0:
-        child.sendline(PASS)
+        child.sendline(buddy_pass())
     elif i != 1:
         print("\n[buddy_ssh] timeout waiting for password prompt", file=sys.stderr)
         child.close(force=True)

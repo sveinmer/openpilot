@@ -231,7 +231,7 @@ frame), mens 0x399 passerte fritt (32 unike payloads). Kurvene virket
 igjen 06-20 (etter trigger-felt-fiksen) → tilstanden er nå tilbake TROSS
 korrekte trigger-felt (bevist på CAN denne uka).
 
-Buddy-fakta fra sprint-README: **Pi-basert, ssh pi/pi via WiFi-AP
+Buddy-fakta fra sprint-README: **Pi-basert, ssh pi@ (passord i lokal memory) via WiFi-AP
 `tinklaAP` (10.5.5.1/24)**, prosess `tinklaBuddy`, eth0=chassis-side,
 eth1=IC-side, lytter på UDP 20101 (EtherCAN-input), har web-UI.
 Regel: TEMP-only på Buddy (`feedback_buddy_temp_only`). Firmware er IKKE

@@ -92,5 +92,5 @@ kode-sunnhet, openpilot 0x239-encoding (range=50 frisk på CAN).
 
 C3-tilgang: `ssh comma@10.5.5.125` (nøkkel-auth, ingen passord). Env:
 `PYTHONPATH=/data/openpilot /usr/local/venv/bin/python` fra `/data/openpilot`.
-Buddy: `python3 /tmp/buddy_ssh.py` (pi/pi), AF_PACKET (ingen tcpdump).
+Buddy: `python3 /tmp/buddy_ssh.py` (pi@ + BUDDY_PASS), AF_PACKET (ingen tcpdump).
 Tinkla-æra-rlogs (før switch, ukomprimert `rlog`): `/data/media/0/realdata/2026-04-*`.

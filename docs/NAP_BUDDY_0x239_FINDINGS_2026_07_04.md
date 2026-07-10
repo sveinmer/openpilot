@@ -110,7 +110,7 @@ konstanten UAVHENGIG av port-20101-input — en dedikert IC-generator-tråd.
 
 ## Verktøy bygget (i /tmp, ephemere — se scripts/buddy_sprint/)
 
-- `buddy_ssh.py`: pexpect SSH-wrapper (pi/pi @ 10.5.5.1), sender kommando som
+- `buddy_ssh.py`: pexpect SSH-wrapper (pi@10.5.5.1 (passord: BUDDY_PASS, lokal memory)), sender kommando som
   SSH-arg, streamer til EOF
 - `buddy_live_capture.py`: AF_PACKET sniffer eth0+eth1, DAS-suite tracking,
   0x239 time-series. Bruker IKKE tcpdump/base64 (ikke tilgjengelig på Buddy)
