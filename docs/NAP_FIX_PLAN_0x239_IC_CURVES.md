@@ -163,10 +163,22 @@ historikken — reflash gjenoppretter eksakt dagens tilstand.
   `cf5f660`-innhold; kun git-metadata) — align ved neste anledning:
   `git fetch origin && git checkout FETCH_HEAD` i /data/openpilot/panda.
 
-### → NESTE: FASE 2-måling (krever tenning/kjøretur)
-1. Tenning på (parkert): 0x348 begynner å flyte → les nyeste rlog:
-   0x239 skal nå ha ROTERENDE counter (0..15) i tillegg til counter=1.
-2. Ethernet-capture Buddy-siden: broer GTW nå frisk 0x239 (range=50)?
-3. Foto/video av IC i kjent sving.
-Utfall B (rotasjon på CAN men GTW broer fortsatt idle) → Fase 2b (Tinkla
-TX-block-paritet).
+## FASE 2 — UTFØRT 2026-07-10: **UTFALL A — KURVENE VIRKER. SAK LUKKET.**
+
+- **Svein bekrefter visuelt: IC-kurvene virker igjen** (kjøretur 2026-07-10
+  etter flash).
+- **Målt (rlog rute 00000175, seg 0–5):** 0x239 på bus 0 (src=128):
+  6054 frames — **alle 16 counter-verdier til stede, ~190 hver** (panda-
+  generatorens 10 Hz-rotasjon) + 3209 ekstra på counter=1 (openpilots
+  direkte TX ~2 Hz). Før fiks: KUN counter={1}.
+- **Fase 2b (Tinkla TX-block-paritet) er IKKE nødvendig:** GTW/IC aksepterer
+  rotasjonen selv med openpilots counter=1-duplikater interleaved. NAP-
+  designet (capture uten blokkering) står som det er.
+- Merk for fremtidig feilsøking: panda-emitterte frames vises i rlog som
+  src=128 (TX-echo). Tinkla-æraens «src=192» var returned-echo-varianten —
+  ikke en egen fysisk buss (bekrefter §-korreksjonen i findings-dokumentet).
+
+**Total kausalkjede, lukket:** stale firmware (bygget før IC-generatoren)
+→ committet+selvverifisert i git → aldri reflashet → ingen counter-rotasjon
+→ GTW/IC forkastet 0x239 som stale → idle-kurver. Fiks: gjenbygd+flashet
+korrekt firmware (Fase 1) → rotasjon live → kurver tilbake (Fase 2).
