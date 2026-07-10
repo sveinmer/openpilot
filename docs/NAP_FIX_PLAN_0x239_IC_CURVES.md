@@ -110,3 +110,51 @@ implementer en fiks før Fase 0 peker entydig. Svein presset (berettiget) på at
 0.1 → 0.2 → 0.3 (raske, kode-uavhengige, offline/rlog) → 0.4 (kodeanalyse) →
 velg fiks. Start ALLTID med laveste-risiko utfall (K4 checkout / K3 reboot)
 før kode-endring (K2b).
+
+---
+
+## OPPDATERING 2026-07-10 (kveld) — ROTÅRSAK-KANDIDAT: panda-firmware-mismatch
+
+Live-diagnostikk (C3 @ 192.168.0.65) + diff mot fungerende Tinkla-kildekode
+(`/home/svein/repos/Tinkla`) peker sterkt på:
+
+**Panda kjører feil firmware. IC-emitteren er død.**
+- Panda `get_version()` = **`DEV-90387239-DEBU`** — commit `90387239` finnes
+  IKKE i NAP-panda-historikken (fremmed/gammel firmware).
+- C3-kode + bygget firmware = **`02f19e33`** (`obj/version` = `DEV-02f19e33-DEBUG`).
+- **Panda IC-emit produserer ingenting:** 0x239 på CAN har KUN counter={1} (212
+  frames) = openpilots direkte TX (counter=1 hardkodet). Panda re-emit (som
+  roterer counter 0..15, jf. `preap_ic_apply_counter`) mangler helt.
+- Tinkla (virket) hadde ROTERENDE counter på 0x239 → panda IC-emit var aktiv.
+
+**Hypotese (forklarer HELE historien + «bit-lik kode»):** Bil-byttet
+Tesla→Ampera→Tesla flashet panda med annen firmware (Ampera/stock). Tilbake-
+flash til NAP-panda-firmware skjedde ikke / feilet (jf. commit 5c63134 «pandad
+DFU-recovery når panda.flash() ikke kan entre bootstub» — F4/DOS-panda honorerer
+ikke alltid enter_bootstub). Python-koden (openpilot) forble bit-lik, men den
+FLASHEDE panda-firmwaren er stale → NAP IC-emit finnes ikke i den → 0x239 sendes
+kun med konstant counter=1 → GTW/IC behandler den som stale/ugyldig APE-output
+→ IC viser idle-lanes. «Kode-injeksjonene» = manuell panda-flash/DFU-fikling
+under bil-byttene.
+
+**IKKE 100% bevist (ærlig):** kunne ikke inspisere 90387239-firmwaren innhold,
+og ikke bevist at flashing 02f19e33 gjenoppretter kurvene. `get_signature()`-
+sjekken var inkonklusiv (fw-fil-sti feil). Krever verifisering.
+
+### PERMANENT FIKS (ingen device-injeksjon — installer korrekt repo-firmware)
+1. **Bekreft mismatch definitivt:** `panda.get_signature()` vs bygget
+   `panda.bin.signed`. Hvis ulik → panda kjører feil fw, pandad burde flashe.
+2. **Re-flash panda med NAP-firmware (02f19e33):** `cd /data/openpilot/panda &&
+   python -c "from panda import Panda; Panda().flash()"` ELLER reboot og la
+   pandad flashe. Hvis panda.flash() feiler (F4 bootstub) → DFU-recovery
+   (5c63134-stien). Dette INSTALLERER den committede firmwaren fra
+   sveinmer/openpilot — ikke en hack.
+3. **Hvis pandad ikke auto-flasher tross mismatch → DET er repo-bugen.** Fiks
+   flash-betingelsen i `selfdrive/pandad/pandad.py` (permanent kode-fiks i repo).
+4. **Verifiser (Fase 2):** 0x239 counter roterer (rlog offline) + Buddy-ethernet
+   0x239 range=50 varierende + foto av IC-kurver i sving.
+
+### Sikkerhet
+Re-flash er standard panda-operasjon (pandad gjør det ved hver boot ved mismatch).
+Firmwaren er den committede NAP-panda (02f19e33), ikke ny/uverifisert kode. Lav
+risiko. Rydd også C3s inerte hud_module sweep-patch (uncommittet) for ren tilstand.
