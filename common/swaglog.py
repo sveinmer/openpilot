@@ -45,7 +45,9 @@ class SwaglogRotatingFileHandler(BaseRotatingHandler):
       fp = os.path.join(base_dir, fn)
       if fp.startswith(self.base_filename) and os.path.isfile(fp):
         log_files.append(fp)
-    return sorted(log_files)
+    # Newest first, matching _open() which inserts new files at index 0.
+    # doRollover() pops from the end, so the oldest file is deleted first.
+    return sorted(log_files, reverse=True)
 
   def shouldRollover(self, record):
     size_exceeded = self.max_bytes > 0 and self.stream.tell() >= self.max_bytes
