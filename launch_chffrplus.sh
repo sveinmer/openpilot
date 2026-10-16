@@ -25,6 +25,17 @@ function agnos_init {
     fi
     $DIR/system/hardware/tici/updater $AGNOS_PY $MANIFEST
   fi
+
+  # Keep the built-in NVMe (Samsung SSD 980) out of its deepest power state PS4
+  # (exit latency 9 ms). After hours idle in PS4 the PCIe link to it drops at the
+  # first write (onroad start), loggerd dies and engagement is blocked until a
+  # reboot. 5000 us keeps PS0-PS3 (PS3 exit is 1.2 ms). Applied per boot because
+  # the limit is a runtime knob, not persisted.
+  NVME_PS_LIMIT=/sys/class/nvme/nvme0/ps_max_latency_us
+  if [ -e "$NVME_PS_LIMIT" ]; then
+    echo 5000 | sudo tee "$NVME_PS_LIMIT" > /dev/null
+    echo "launch_chffrplus: nvme0 ps_max_latency_us=$(cat $NVME_PS_LIMIT) (PS4 disabled)" > /dev/kmsg
+  fi
 }
 
 function launch {
