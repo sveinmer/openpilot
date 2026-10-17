@@ -36,6 +36,16 @@ function agnos_init {
     echo 5000 | sudo tee "$NVME_PS_LIMIT" > /dev/null
     echo "launch_chffrplus: nvme0 ps_max_latency_us=$(cat $NVME_PS_LIMIT) (PS4 disabled)" > /dev/kmsg
   fi
+
+  # Test 2B (2026-10-17): the link still dropped with PS4 excluded, so disable
+  # the PCIe L1 substates (L1.1/L1.2) on RC1, the NVMe port. The driver walks
+  # RC and endpoint and clears L1SubCtl1; it logs "PCIe: RC1: disable L1ss".
+  # rc_sel is a bitmask (bit1 = RC1). Runtime only, hence per boot.
+  PCIE_DBG=/sys/kernel/debug/pci-msm
+  if [ -e "$PCIE_DBG/case" ]; then
+    echo 2 | sudo tee "$PCIE_DBG/rc_sel" > /dev/null
+    echo 9 | sudo tee "$PCIE_DBG/case" > /dev/null
+  fi
 }
 
 function launch {
