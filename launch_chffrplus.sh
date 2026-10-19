@@ -42,7 +42,8 @@ function agnos_init {
   # RC and endpoint and clears L1SubCtl1; it logs "PCIe: RC1: disable L1ss".
   # rc_sel is a bitmask (bit1 = RC1). Runtime only, hence per boot.
   PCIE_DBG=/sys/kernel/debug/pci-msm
-  if [ -e "$PCIE_DBG/case" ]; then
+  # debugfs is root-only, so the existence test must run under sudo too
+  if sudo test -e "$PCIE_DBG/case"; then
     echo 2 | sudo tee "$PCIE_DBG/rc_sel" > /dev/null
     echo 9 | sudo tee "$PCIE_DBG/case" > /dev/null
   fi
