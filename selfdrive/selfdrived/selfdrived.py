@@ -123,6 +123,16 @@ class SelfdriveD:
     self.rk = Ratekeeper(100, print_delay_threshold=None)
     self.prev_pedal_long_active = False
 
+    # Re-added from upstream commaai/openpilot 1836d1594 + 8aadf02b2 (dropped when
+    # comma three left master). Some comma three with NVMe lose the PCIe link to the
+    # SSD (on this unit: when cold, as the cameras power up at onroad start), which
+    # kills loggerd on write. That must not block engagement, so ignore loggerd in the
+    # processNotRunning check on that platform only. The event is still logged above.
+    self.ignored_processes = set()
+    nvme_expected = os.path.exists('/dev/nvme0n1') or (not os.path.isfile("/persist/comma/living-in-the-moment"))
+    if HARDWARE.get_device_type() == 'tici' and nvme_expected:
+      self.ignored_processes = {'loggerd', }
+
     # Determine startup event
     self.startup_event = EventName.startup if build_metadata.openpilot.comma_remote and build_metadata.tested_channel else EventName.startupMaster
     if HARDWARE.get_device_type() == 'mici':
@@ -334,7 +344,7 @@ class SelfdriveD:
       if not_running != self.not_running_prev:
         cloudlog.event("process_not_running", not_running=not_running, error=True)
       self.not_running_prev = not_running
-    if self.sm.recv_frame['managerState'] and not_running:
+    if self.sm.recv_frame['managerState'] and (not_running - self.ignored_processes):
       self.events.add(EventName.processNotRunning)
     else:
       if not SIMULATION and not self.rk.lagging:
