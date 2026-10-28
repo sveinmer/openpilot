@@ -15,13 +15,16 @@ from openpilot.common.swaglog import cloudlog
 
 KMSG_DIR = "/data/kmsg"
 MAX_FILE_BYTES = 8 * 1024 * 1024
-MAX_FILES = 12
+MAX_FILES = 40
 SYNC_KEYWORDS = ("ufs", "UFS", "EXT4", "I/O error", "error", "Error", "fail",
                  "abort", "timeout", "scsi", "sd 0:", "reset", "remount", "Oops", "BUG")
 
 
 def _cleanup() -> None:
-  files = sorted(f for f in os.listdir(KMSG_DIR) if f.startswith("kmsg-"))
+  # Sort by mtime, not by name: the file name carries the boot-time clock, which is
+  # wrong (2025-07-02) until NTP/GPS sync, so name order is not chronological.
+  files = sorted((f for f in os.listdir(KMSG_DIR) if f.startswith("kmsg-")),
+                 key=lambda f: os.path.getmtime(os.path.join(KMSG_DIR, f)))
   for f in files[:-MAX_FILES]:
     try:
       os.remove(os.path.join(KMSG_DIR, f))
